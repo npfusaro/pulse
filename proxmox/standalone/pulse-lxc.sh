@@ -9,7 +9,7 @@
 # variables: CTID=120 STORAGE=local-zfs BRIDGE=vmbr0 RAM=2048 bash -c "$(wget ...)". Run from GitHub, the install
 # script is fetched from the same branch (INSTALL_URL overrides where).
 #
-# Network: DHCP on the bridge by default; IP=192.168.1.50/24 GW=192.168.1.1 for a static address.
+# Network: DHCP on the bridge by default; IP=192.168.1.50/24 GW=192.168.1.1 for a static address. DEBIAN=12 for bookworm.
 set -Eeuo pipefail
 
 CTID="${CTID:-$(pvesh get /cluster/nextid)}"
@@ -25,6 +25,9 @@ GW="${GW:-}"
 UNPRIVILEGED="${UNPRIVILEGED:-1}"
 PULSE_REPO="${PULSE_REPO:-https://github.com/npfusaro/pulse.git}"
 PULSE_BRANCH="${PULSE_BRANCH:-feat/backfill-days-and-spo2}"
+# Debian 13 (trixie): the release PVE 9 is built on, supported to about 2030. DEBIAN=12 still works (the install reads
+# the codename at run time); nothing in Pulse needs one over the other.
+DEBIAN="${DEBIAN:-13}"
 
 command -v pct >/dev/null || { echo "run this on a Proxmox VE host (pct not found)" >&2; exit 1; }
 
@@ -40,9 +43,9 @@ if [[ ! -f "$install_script" ]]; then
   [[ -s "$install_script" ]] || { echo "could not fetch the install script from $INSTALL_URL" >&2; exit 1; }
 fi
 
-echo "➤ Debian 12 template"
-template="$(pveam available --section system | awk '/debian-12-standard/ {print $2}' | sort -V | tail -1)"
-[[ -n "$template" ]] || { echo "no debian-12-standard template listed by pveam (run pveam update)" >&2; exit 1; }
+echo "➤ Debian ${DEBIAN} template"
+template="$(pveam available --section system | awk -v d="debian-${DEBIAN}-standard" 'index($2, d) == 1 {print $2}' | sort -V | tail -1)"
+[[ -n "$template" ]] || { echo "no debian-${DEBIAN}-standard template listed by pveam (run pveam update)" >&2; exit 1; }
 pveam list "$TEMPLATE_STORAGE" | grep -q "$template" || pveam download "$TEMPLATE_STORAGE" "$template"
 
 net="name=eth0,bridge=${BRIDGE},ip=${IP}"

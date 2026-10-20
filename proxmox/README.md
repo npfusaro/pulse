@@ -25,8 +25,8 @@ bash -c "$(wget -qLO - https://raw.githubusercontent.com/npfusaro/pulse/feat/bac
 It fetches `install/pulse-install.sh` from the same branch and needs nothing from community-scripts. From a checkout
 of this folder, `bash standalone/pulse-lxc.sh` works the same way.
 
-Defaults: next free CTID, hostname `pulse`, Debian 12, 2 vCPU, 2048 MB, 8 GB on `local-lvm`, DHCP on `vmbr0`,
-unprivileged. Override with environment variables:
+Defaults: next free CTID, hostname `pulse`, Debian 13, 2 vCPU, 2048 MB, 8 GB on `local-lvm`, DHCP on `vmbr0`,
+unprivileged (`DEBIAN=12` for bookworm; the install adapts to either). Override with environment variables:
 
 ```sh
 CTID=120 STORAGE=local-zfs BRIDGE=vmbr0 IP=192.168.1.50/24 GW=192.168.1.1 RAM=3072 bash standalone/pulse-lxc.sh
