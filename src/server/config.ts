@@ -36,6 +36,13 @@ const Env = z
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     GOOGLE_CLIENT_ID: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
+    /**
+     * Local days of history each data type imports on connect (today counts). Google's API has no cap on how far
+     * back an account's data can be read, only on the span of one request, so this is a trade-off of time and
+     * requests: heart rate alone is about 7 requests a day, at 4 a second. Raised on a running server, each type
+     * re-walks its history from the new start on the next sync (sync.ts); lowered, nothing is removed.
+     */
+    BACKFILL_DAYS: z.coerce.number().int("must be a whole number of days").min(1).max(3650, "at most 3650 (ten years)").default(180),
     APP_URL: z.url().optional(),
     /** The Home avatar photo: an absolute URL or a path under public/ ("/me.jpg"). */
     AVATAR_URL: z.string().optional(),
@@ -99,6 +106,8 @@ export function parseConfig(env: Record<string, string | undefined>) {
     avatarUrl: e.AVATAR_URL ?? null,
     android: e.ANDROID_PACKAGE_NAME && e.ANDROID_CERT_SHA256?.length ? { packageName: e.ANDROID_PACKAGE_NAME, fingerprints: e.ANDROID_CERT_SHA256 } : null,
     vapid: e.VAPID_PUBLIC_KEY && e.VAPID_PRIVATE_KEY && e.VAPID_SUBJECT ? { publicKey: e.VAPID_PUBLIC_KEY, privateKey: e.VAPID_PRIVATE_KEY, subject: e.VAPID_SUBJECT } : null,
+    /** Local days each Google data type imports on a first connect (today counts). The demo seed has its own length. */
+    backfillDays: e.BACKFILL_DAYS,
     google: e.DATA_SOURCE === "google"
       ? {
           clientId: e.GOOGLE_CLIENT_ID!,

@@ -19,6 +19,14 @@ describe("parseConfig", () => {
     expect(c.google).toEqual({ clientId: "id", clientSecret: "secret", appUrl: null });
   });
 
+  it("BACKFILL_DAYS: 180 by default, a whole number of days from 1 to 3650", () => {
+    expect(parseConfig({}).backfillDays).toBe(180);
+    expect(parseConfig({ BACKFILL_DAYS: "365" }).backfillDays).toBe(365);
+    for (const bad of ["0", "3651", "1.5", "a year"]) {
+      expect(() => parseConfig({ BACKFILL_DAYS: bad })).toThrow(/BACKFILL_DAYS/);
+    }
+  });
+
   it("APP_URL drops its trailing slash; DATABASE_URL, BETTER_AUTH_SECRET and DISABLE_SIGNUP pass through", () => {
     const c = parseConfig({
       ...google,

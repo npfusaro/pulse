@@ -81,7 +81,9 @@ beforeEach(async () => {
 });
 
 /** A source over a stubbed Google that answers each request from the fixtures inside its window. */
-function setup(o: { failing?: string[]; failStatus?: number; onRequest?: (type: string, filter: string | null) => void | Promise<void>; devices?: () => Response } = {}) {
+function setup(
+  o: { failing?: string[]; failStatus?: number; onRequest?: (type: string, filter: string | null) => void | Promise<void>; devices?: () => Response; backfillDays?: number } = {},
+) {
   let clock = NOW;
   const calls: { type: string; filter: string | null }[] = [];
   const fetch = vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
@@ -127,6 +129,7 @@ function setup(o: { failing?: string[]; failStatus?: number; onRequest?: (type: 
       clock += ms;
     },
     log,
+    backfillDays: o.backfillDays,
   });
   return {
     source,
@@ -231,6 +234,33 @@ describe("google sync", () => {
     expect(await source.pull(USER)).toEqual({ changed: false }); // a full second backfill
     expect(await counts()).toEqual(before);
     expect(await dirtyDays()).toEqual([]);
+  });
+
+  it("imports BACKFILL_DAYS from the environment; raising it re-walks a finished import from the new start, lowering it changes nothing", async () => {
+    const short = setup({ backfillDays: 30 });
+    await short.source.pull(USER);
+    expect(short.calls.filter((c) => c.type === "heart-rate" && c.filter)).toHaveLength(30);
+    expect(lowerBound(short.calls.find((c) => c.type === "heart-rate" && c.filter)!.filter)).toBe("2026-09-02T18:30:00.000Z"); // local midnight, 3 September
+    expect(await state("heart-rate")).toMatchObject({ backfillDaysDone: 30, backfillDaysTotal: 30 });
+    const before = await counts();
+
+    // Raised: every type starts over from the new start; what was held re-fetches as a no-op.
+    const long = setup({ backfillDays: 45 });
+    expect(await long.source.pull(USER)).toEqual({ changed: false });
+    const hr = long.calls.filter((c) => c.type === "heart-rate" && c.filter);
+    expect(hr).toHaveLength(45);
+    expect(lowerBound(hr[0].filter)).toBe("2026-08-18T18:30:00.000Z");
+    expect(await state("heart-rate")).toMatchObject({ backfillDaysDone: 45, backfillDaysTotal: 45, lastError: null });
+    expect(await state("sleep")).toMatchObject({ backfillDaysDone: 45, backfillDaysTotal: 45 });
+    expect(await counts()).toEqual(before);
+
+    // Lowered: an ordinary incremental sync, and the total it finished with stays.
+    const back = setup({ backfillDays: 10 });
+    back.advance(15 * 60_000);
+    await back.source.pull(USER);
+    expect(back.calls.filter((c) => c.type === "heart-rate" && c.filter)).toHaveLength(1);
+    expect(await state("heart-rate")).toMatchObject({ backfillDaysDone: 45, backfillDaysTotal: 45 });
+    expect(await counts()).toEqual(before);
   });
 
   it("re-fetches heart rate from synced_through minus 1 hour and marks only today dirty", async () => {

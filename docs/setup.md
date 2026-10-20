@@ -121,6 +121,7 @@ ADMIN_EMAILS=you@example.com            # the email you will sign up to Pulse wi
 GOOGLE_CLIENT_ID=...apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=...
 APP_URL=https://<your-host>             # optional, recommended: the address you open Pulse on
+BACKFILL_DAYS=180                       # optional: days of history to import on connect (1-3650)
 ```
 
 Generate each secret in a second terminal and paste it in. Save with **Ctrl+O** and exit with **Ctrl+X**.
@@ -152,7 +153,9 @@ services:
 
 3. Open `https://<your-host>` and **create your account right away**, with the email from `ADMIN_EMAILS`. While the
    server has no accounts, that email needs no invite, and whoever signs up with it first owns the server.
-4. Go through onboarding, then **Connect Google** and allow every permission. Pulse imports your last 180 days.
+4. Go through onboarding, then **Connect Google** and allow every permission. Pulse imports your last 180 days
+   (`BACKFILL_DAYS` changes that; Google has no limit on how far back it serves, so a year is only more requests,
+   about ten minutes of heart rate. Raise it later and the next sync walks the extra history in).
 
 Your Pulse server is set up.
 

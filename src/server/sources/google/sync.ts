@@ -1,5 +1,7 @@
-// Google source (U4): per type, a 180-day first backfill walked oldest first with "N of 180 days"
-// progress in sync_state, then a trailing re-fetch every run. Writes are upserts that only touch a
+// Google source (U4): per type, a first backfill of BACKFILL_DAYS local days (180 unless the environment says
+// otherwise) walked oldest first with "N of total" progress in sync_state, then a trailing re-fetch every run.
+// Google itself does not cap how far back an account's history can be read, only the span of one request
+// (catalogue.ts maxDays), so the length is purely a time-and-requests trade-off. Writes are upserts that only touch a
 // row whose values differ, so an unchanged re-fetch is a no-op, `changed` is honest, and only days
 // whose intraday inputs actually changed land in intraday_dirty.
 //
@@ -45,6 +47,7 @@ import {
 } from "./map";
 import { GoogleError } from "./oauth";
 
+/** The first import's length when the environment sets no BACKFILL_DAYS (config.ts). */
 export const BACKFILL_DAYS = 180;
 /** The sync_state row for the paired-device check; its lastError holds NO_PAIRED_DEVICE while the account has none. */
 export const DEVICES_KEY = "paired-devices";
@@ -100,10 +103,14 @@ const JOBS: Job[] = [
   ...EXTRA_JOBS,
 ];
 
-export type SyncDeps = Omit<ClientDeps, "userId"> & { log?: Pick<Console, "error"> };
+export type SyncDeps = Omit<ClientDeps, "userId"> & {
+  log?: Pick<Console, "error">;
+  /** Local days a first import covers, today included. Default BACKFILL_DAYS; the app passes the environment's. */
+  backfillDays?: number;
+};
 
 export function createGoogleSource(deps: SyncDeps): Source {
-  const { db, timeZone: tz, now = Date.now, log = console } = deps;
+  const { db, timeZone: tz, now = Date.now, log = console, backfillDays = BACKFILL_DAYS } = deps;
   const nowS = () => Math.floor(now() / 1000);
 
   return {
@@ -119,7 +126,7 @@ export function createGoogleSource(deps: SyncDeps): Source {
           .values({ userId, type: key, ...patch })
           .onConflictDoUpdate({ target: [syncState.userId, syncState.type], set: patch });
 
-      // A Google Health profile with no paired device imports 180 empty days; say so instead (Settings,
+      // A Google Health profile with no paired device imports backfillDays empty days; say so instead (Settings,
       // ConnectionBanner). Only a clear "none" sets it and a clear "some" clears it; an error or an unknown
       // shape keeps the last answer, so a bad day at Google never claims the band is missing.
       try {
@@ -179,13 +186,19 @@ export function createGoogleSource(deps: SyncDeps): Source {
         const t = nowS();
         const today = localDay(t, tz);
         const fresh = st?.syncedThrough == null;
-        const backfilling = fresh || (st.backfillDaysDone ?? 0) < (st.backfillDaysTotal ?? BACKFILL_DAYS);
-        let done = fresh ? 0 : (st.backfillDaysDone ?? 0);
+        // A finished import shorter than BACKFILL_DAYS now asks for is walked again from the new start, as a first
+        // import is: the days already held re-fetch as no-ops (upserts touch only what differs), so the cost is
+        // requests, never data. A shorter BACKFILL_DAYS removes nothing, and an import still under way keeps its total.
+        const finished = !fresh && st.backfillDaysTotal != null && (st.backfillDaysDone ?? 0) >= st.backfillDaysTotal;
+        const grow = finished && backfillDays > st!.backfillDaysTotal!;
+        const total = fresh || grow ? backfillDays : (st.backfillDaysTotal ?? backfillDays);
+        const backfilling = fresh || grow || (st.backfillDaysDone ?? 0) < total;
+        let done = fresh || grow ? 0 : (st.backfillDaysDone ?? 0);
 
         let from: number;
-        if (fresh) {
-          from = localMidnight(addDays(today, 1 - BACKFILL_DAYS), tz); // today is day 180
-          await setState(db, job.key, { backfillDaysDone: 0, backfillDaysTotal: BACKFILL_DAYS });
+        if (fresh || grow) {
+          from = localMidnight(addDays(today, 1 - total), tz); // today is the last day
+          await setState(db, job.key, { backfillDaysDone: 0, backfillDaysTotal: total });
         } else if (backfilling) {
           from = st.syncedThrough!; // the last committed chunk's end
         } else {
@@ -213,11 +226,11 @@ export function createGoogleSource(deps: SyncDeps): Source {
                 : await client.list(job.type, win.start, win.end);
           await db.transaction(async (tx) => {
             if (await (hr !== null ? w.writeHr(tx, hr, win) : w.write(tx, job, points, win))) run.changed = true;
-            if (backfilling) done = Math.min(BACKFILL_DAYS, done + daysIn(win, tz));
+            if (backfilling) done = Math.min(total, done + daysIn(win, tz));
             await setState(tx, job.key, { syncedThrough: win.end, ...(backfilling && { backfillDaysDone: done }) });
           });
         }
-        if (backfilling) await setState(db, job.key, { syncedThrough: t, backfillDaysDone: BACKFILL_DAYS });
+        if (backfilling) await setState(db, job.key, { syncedThrough: t, backfillDaysDone: total });
       }
     },
 
@@ -253,11 +266,11 @@ export const googleSource: Source = {
 };
 
 async function sourceFor(userId: number) {
-  const { google } = getConfig();
+  const { google, backfillDays } = getConfig();
   if (!google) return null;
   const db = getDb();
   const timeZone = (await getProfile(db, userId))?.timeZone ?? "UTC";
-  return createGoogleSource({ db, google, timeZone });
+  return createGoogleSource({ db, google, timeZone, backfillDays });
 }
 
 const minute = (s: number) => Math.floor(s / 60) * 60;
