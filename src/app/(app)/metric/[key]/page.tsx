@@ -3,14 +3,14 @@ import { notFound } from "next/navigation"
 import { DATA_COLORS, deltaTone } from "@/lib/bands"
 import { DASHBOARD_LABEL } from "@/lib/dashboard"
 import { DAY, formatDay, formatValue } from "@/lib/format"
-import { RANGES, type TrendRange } from "@/lib/url"
+import { dayHref, RANGES, type TrendRange } from "@/lib/url"
 import { TrendChart, type TrendSeries } from "@/components/charts/TrendChart"
 import { ReasonPlaceholder } from "@/components/metrics/ReasonPlaceholder"
 import { CAPTION, LABEL, MetricTags, StatusChip, ValueUnit } from "@/components/metrics/primitives"
 import { DetailShell } from "@/components/shells/DetailShell"
 import { EmptyState } from "@/components/shells/EmptyState"
 import { MetricState } from "@/components/shells/MetricState"
-import { SectionShell } from "@/components/shells/SectionShell"
+import { ActionLink, SectionShell } from "@/components/shells/SectionShell"
 import { getMetricDetail, isDetailKey, type MetricDetailVM } from "@/server/queries/metric"
 import { pageDay, type SearchParams } from "../../_lib/day"
 import { mapMetric } from "../../_lib/view"
@@ -37,7 +37,7 @@ export async function generateMetadata({ params }: PageProps<"/metric/[key]">) {
 export default async function MetricPage({ params, searchParams }: PageProps<"/metric/[key]">) {
   const { key } = await params
   if (!isDetailKey(key)) notFound()
-  const { d, timeZone, ctx } = await pageDay(searchParams as SearchParams, `/metric/${key}`)
+  const { d, today, timeZone, ctx } = await pageDay(searchParams as SearchParams, `/metric/${key}`)
   const vm = await getMetricDetail(key, d, ctx)
   const empty = vm.value.value === null && vm.history.value === null
   // The day's hourly view sits beside the hero on laptop; every other section follows the history.
@@ -55,6 +55,8 @@ export default async function MetricPage({ params, searchParams }: PageProps<"/m
     <DetailShell
       title={vm.label}
       dateSwitcher={{ mode: "day" }}
+      // Blood oxygen has a night view of its own (the band's minute readings); this screen keeps the nightly averages.
+      action={key === "spo2" ? <ActionLink label="Night view" href={dayHref("/health/blood-oxygen", d, today)} /> : undefined}
       hero={<Hero vm={vm} />}
       summary={lead && <MetricSection s={lead} vm={vm} timeZone={timeZone} />}
       primary={

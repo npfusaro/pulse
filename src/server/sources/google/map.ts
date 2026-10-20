@@ -181,6 +181,22 @@ export function mapHeartRate(points: unknown[]): Map<number, number> {
 }
 
 /**
+ * The band's minute-by-minute blood oxygen, unix second -> percent (one decimal). Like heart rate, HEALTH_CONNECT
+ * (a pulse oximeter app, a manual entry) is dropped so spo2_days is the band's alone; a 0 is Fitbit's old sentinel
+ * for "could not read" and is skipped. A repeated second keeps the last point.
+ */
+export function mapOxygenSaturation(points: unknown[]): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const p of points) {
+    if (platform(p) === "HEALTH_CONNECT") continue;
+    const ts = secs(at(p, "oxygenSaturation.sampleTime.physicalTime"));
+    const pct = num(at(p, "oxygenSaturation.percentage"));
+    if (ts !== null && pct !== null && pct > 0 && pct <= 100) out.set(ts, Math.round(pct * 10) / 10);
+  }
+  return out;
+}
+
+/**
  * Steps per minute (minute-start unix second -> count), the maximum across sources: summing would
  * double-count a walk both the band and the phone saw. Only used for movement gating; daily totals
  * come from dailyRollUp. An interval longer than a minute is spread evenly over the minutes it touches.

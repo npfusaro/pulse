@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { mapDaily, mapExercises, mapExtra, mapHeartRate, mapHeight, mapLogEntries, mapRecords, mapRollup, mapSleep, mapStepsMinutes } from "./map";
+import { mapDaily, mapExercises, mapExtra, mapHeartRate, mapHeight, mapLogEntries, mapOxygenSaturation, mapRecords, mapRollup, mapSleep, mapStepsMinutes } from "./map";
 import { toDataPoint } from "./write";
 
 const TZ = "Asia/Kolkata"; // UTC+5:30: a night's UTC date and its local wake day differ
@@ -77,6 +77,15 @@ describe("intraday mappers", () => {
     expect(hr.get(ts("2026-10-01T00:00:02Z"))).toBe(51);
     expect(hr.has(ts("2026-10-01T12:45:01Z"))).toBe(false); // HEALTH_CONNECT
     expect(hr.size).toBe(5);
+  });
+
+  it("blood oxygen: band only, one decimal, a 0 (Fitbit's unreadable minute) is skipped", () => {
+    const spo2 = mapOxygenSaturation(points("oxygen-saturation"));
+    expect(spo2.get(ts("2026-09-30T19:00:00Z"))).toBe(97.2);
+    expect(spo2.get(ts("2026-09-30T19:03:00Z"))).toBe(93.5);
+    expect(spo2.has(ts("2026-09-30T19:04:00Z"))).toBe(false); // HEALTH_CONNECT
+    expect(spo2.has(ts("2026-09-30T19:05:00Z"))).toBe(false); // 0
+    expect(spo2.size).toBe(5);
   });
 
   it("steps per minute: maximum across sources, a long interval spread over its minutes", () => {

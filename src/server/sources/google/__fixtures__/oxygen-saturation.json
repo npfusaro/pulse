@@ -1,0 +1,25 @@
+{
+  "dataPoints": [
+    { "name": "users/me/dataTypes/oxygen-saturation/dataPoints/spo2-1",
+      "dataSource": { "platform": "FITBIT", "recordingMethod": "ACTIVELY_MEASURED", "device": { "displayName": "<device>" } },
+      "oxygenSaturation": { "percentage": 97.2, "sampleTime": { "physicalTime": "2026-09-30T19:00:00Z", "utcOffset": "19800s" } } },
+    { "name": "users/me/dataTypes/oxygen-saturation/dataPoints/spo2-2",
+      "dataSource": { "platform": "FITBIT", "recordingMethod": "ACTIVELY_MEASURED", "device": { "displayName": "<device>" } },
+      "oxygenSaturation": { "percentage": 96.8, "sampleTime": { "physicalTime": "2026-09-30T19:01:00Z", "utcOffset": "19800s" } } },
+    { "name": "users/me/dataTypes/oxygen-saturation/dataPoints/spo2-3",
+      "dataSource": { "platform": "FITBIT", "recordingMethod": "ACTIVELY_MEASURED", "device": { "displayName": "<device>" } },
+      "oxygenSaturation": { "percentage": 93.5, "sampleTime": { "physicalTime": "2026-09-30T19:03:00Z", "utcOffset": "19800s" } } },
+    { "name": "users/me/dataTypes/oxygen-saturation/dataPoints/spo2-4",
+      "dataSource": { "platform": "HEALTH_CONNECT", "recordingMethod": "MANUAL_ENTRY", "application": { "packageName": "<app>" } },
+      "oxygenSaturation": { "percentage": 99, "sampleTime": { "physicalTime": "2026-09-30T19:04:00Z", "utcOffset": "19800s" } } },
+    { "name": "users/me/dataTypes/oxygen-saturation/dataPoints/spo2-5",
+      "dataSource": { "platform": "FITBIT", "recordingMethod": "ACTIVELY_MEASURED", "device": { "displayName": "<device>" } },
+      "oxygenSaturation": { "percentage": 0, "sampleTime": { "physicalTime": "2026-09-30T19:05:00Z", "utcOffset": "19800s" } } },
+    { "name": "users/me/dataTypes/oxygen-saturation/dataPoints/spo2-6",
+      "dataSource": { "platform": "FITBIT", "recordingMethod": "ACTIVELY_MEASURED", "device": { "displayName": "<device>" } },
+      "oxygenSaturation": { "percentage": 97.9, "sampleTime": { "physicalTime": "2026-10-01T19:30:00Z", "utcOffset": "19800s" } } },
+    { "name": "users/me/dataTypes/oxygen-saturation/dataPoints/spo2-7",
+      "dataSource": { "platform": "FITBIT", "recordingMethod": "ACTIVELY_MEASURED", "device": { "displayName": "<device>" } },
+      "oxygenSaturation": { "percentage": 96.1, "sampleTime": { "physicalTime": "2026-10-01T23:30:00Z", "utcOffset": "19800s" } } }
+  ]
+}

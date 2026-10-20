@@ -71,6 +71,13 @@
       "when": 1791569456392,
       "tag": "0009_black_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792518239705,
+      "tag": "0010_spo2_days",
+      "breakpoints": true
     }
   ]
 }

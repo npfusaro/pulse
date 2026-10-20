@@ -2,7 +2,7 @@ import { FEATURES } from "@/lib/features";
 import { metricHref, trendHref } from "@/lib/url";
 import { and, eq } from "drizzle-orm";
 import { sleepSegments, sleepSessions } from "../db/schema";
-import { readHr } from "../samples";
+import { readHr, readSamples } from "../samples";
 import { addDays, localMinutes } from "../time";
 import {
   type DayRow,
@@ -20,7 +20,7 @@ import {
   todayOf,
   vitalReason,
 } from "./common";
-import type { KeyStat, Metric, SleepStatus, SleepVM, TimePoint } from "./types";
+import type { KeyStat, Metric, NightSpo2, SleepStatus, SleepVM, TimePoint } from "./types";
 
 type Stage = "awake" | "rem" | "light" | "deep";
 const STAGE_ROWS: { stage: Stage; label: string; typical: [number, number] }[] = [
@@ -196,6 +196,22 @@ export async function nightHrOf(ctx: QueryCtx, start: number, end: number): Prom
   const inNight = rows.filter((r) => r.m + 60 > start && r.m < end).length;
   if (inNight < (end - start) / 180) return none("insufficient_hr_data");
   return ok({ bed: ms(start), wake: ms(end), points });
+}
+
+/**
+ * The band's blood oxygen over the sleep [start, end) (unix seconds) plus 15 minutes each side, on the minute grid;
+ * a minute the band did not read is null. Fitbit reads SpO2 once a minute asleep and drops unreliable minutes, so
+ * gaps are normal and nothing here judges the count: an empty night is the caller's "no readings".
+ */
+export async function nightSpo2Of(ctx: QueryCtx, start: number, end: number): Promise<NightSpo2 & { samples: { ts: number; v: number }[] }> {
+  const from = Math.floor((start - HR_PAD_S) / 60) * 60;
+  const to = end + HR_PAD_S;
+  const samples = await readSamples(ctx.db, "spo2", ctx.userId, from, to);
+  // One reading a minute; should two land in one, keep the last (as the sync does for a repeated second).
+  const byMin = new Map(samples.map((s) => [Math.floor(s.ts / 60) * 60, s.v]));
+  const points: TimePoint[] = [];
+  for (let m = from; m < to; m += 60) points.push({ t: ms(m), v: byMin.get(m) ?? null });
+  return { bed: ms(start), wake: ms(end), points, samples };
 }
 
 /** Bedtime as minutes from midnight, evening negative. */

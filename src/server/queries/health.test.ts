@@ -4,7 +4,8 @@ import type { Db } from "../db";
 import { dailyMetrics, dailyValues, healthRecords } from "../db/schema";
 import { SEED_DAYS } from "../sources/seed/scenario";
 import { copyDb, ctxFor, dayAt, seeded, USER } from "../testing";
-import { getHealthspan, getMonitor } from "./health";
+import { SCENARIO } from "../sources/seed/scenario";
+import { getBloodOxygen, getHealthHub, getHealthspan, getMonitor } from "./health";
 
 let db: Db;
 beforeAll(async () => {
@@ -82,5 +83,58 @@ describe("getHealthspan factors", () => {
       vo2max: "/trend/vo2max",
       leanMass: "/trend/lean_mass",
     });
+  });
+});
+
+describe("getBloodOxygen", () => {
+  it("last night: minute readings across the main sleep with gaps, the low marked, the average Health Monitor shows, 30 nightly averages", async () => {
+    const ctx = ctxFor(db);
+    const vm = await getBloodOxygen(today, ctx);
+    const night = vm.night.value!;
+    expect(vm.isToday).toBe(true);
+    expect(vm.average.value).toBe((await getMonitor(today, ctx)).vitals.find((v) => v.key === "spo2")!.metric.value);
+    expect(vm.chip).toEqual((await getMonitor(today, ctx)).vitals.find((v) => v.key === "spo2")!.chip);
+    // One point a minute from 15 minutes before bed to 15 after waking; the band reads only asleep, so the ends are gaps.
+    expect(night.points[0].t).toBe(night.bed - 15 * 60_000);
+    expect(night.points.at(-1)!.t).toBe(night.wake + 15 * 60_000 - 60_000);
+    expect(night.points.slice(0, 15).every((p) => p.v === null)).toBe(true);
+    const read = night.points.filter((p) => p.v !== null);
+    expect(read.length).toBe(night.readMin);
+    expect(night.readMin).toBeGreaterThan(200);
+    expect(night.readMin).toBeLessThan((night.wake - night.bed) / 60_000); // gaps: minutes the band could not read
+    expect(night.low).toEqual(read.reduce<{ t: number; v: number }>((m, p) => (p.v! < m.v ? { t: p.t, v: p.v! } : m), { t: 0, v: Infinity }));
+    expect(night.below95Min).toBe(read.filter((p) => p.v! < 95).length);
+    expect(read.every((p) => p.v! >= 85 && p.v! <= 100)).toBe(true);
+    // The week ends on the shown night, whose row agrees with the hero.
+    expect(vm.nights.map((n) => n.day)).toEqual(Array.from({ length: 7 }, (_, k) => dayAt(SEED_DAYS - 7 + k)));
+    expect(vm.nights.at(-1)).toEqual({ day: today, average: vm.average.value, low: night.low.v, below95Min: night.below95Min });
+    expect(vm.nights.every((n) => n.average !== null && n.low !== null)).toBe(true);
+  });
+
+  it("the illness peak reads lower than a healthy night, with minutes under 95%", async () => {
+    const ill = await getBloodOxygen(dayAt(SCENARIO.illness.start + 3), ctxFor(db));
+    const well = await getBloodOxygen(dayAt(100), ctxFor(db));
+    expect(ill.average.value!).toBeLessThan(well.average.value!);
+    expect(ill.night.value!.below95Min).toBeGreaterThan(well.night.value!.below95Min);
+    expect(ill.isToday).toBe(false);
+  });
+
+  it("a band-off night has no average or readings, with the night's reason; a night with no samples is no_data", async () => {
+    const off = await getBloodOxygen(dayAt(SCENARIO.bandOff.day + 1), ctxFor(db));
+    expect(off.average).toMatchObject({ value: null, reason: "band_not_worn" });
+    expect(off.night).toMatchObject({ value: null, reason: "band_not_worn" });
+    expect(off.nights.at(-1)).toEqual({ day: dayAt(SCENARIO.bandOff.day + 1), average: null, low: null, below95Min: null });
+    expect(off.nights[0].low).not.toBeNull();
+    const db2 = await copyDb(db);
+    await db2.execute("delete from spo2_days");
+    const none = await getBloodOxygen(today, ctxFor(db2));
+    expect(none.night).toMatchObject({ value: null, reason: "no_data" });
+    expect(none.average.value).not.toBeNull(); // Google's nightly value still stands without the samples
+  });
+
+  it("the hub card carries last night's average and low", async () => {
+    const hub = await getHealthHub(ctxFor(db));
+    const vm = await getBloodOxygen(today, ctxFor(db));
+    expect(hub.bloodOxygen).toEqual({ average: vm.average.value, low: vm.night.value!.low.v, wake: vm.night.value!.wake });
   });
 });

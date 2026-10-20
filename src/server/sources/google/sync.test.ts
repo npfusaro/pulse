@@ -50,6 +50,7 @@ const LIST_TYPES = [
   "sleep",
   "exercise",
   "heart-rate",
+  "oxygen-saturation",
   "steps",
 ];
 const camel = (s: string) => s.replace(/[-_](\w)/g, (_, c: string) => c.toUpperCase());
@@ -287,6 +288,31 @@ describe("google sync", () => {
     await clearDirty();
     advance(15 * 60_000);
     expect(await source.pull(USER)).toEqual({ changed: false });
+    expect(await dirtyDays()).toEqual([]);
+  });
+
+  it("blood oxygen: the band's minute samples land in spo2_days as an optional, shown-only type that marks nothing dirty", async () => {
+    const { source, calls } = setup();
+    await source.pull(USER);
+    const s = (iso: string) => Date.parse(iso) / 1000;
+    // Band points only, 0 skipped (map.ts); the first window asks for the whole backfill in 14-day chunks.
+    expect(await readSamples(db, "spo2", USER, 0, 2 ** 31)).toEqual([
+      { ts: s("2026-09-30T19:00:00Z"), v: 97.2 },
+      { ts: s("2026-09-30T19:01:00Z"), v: 96.8 },
+      { ts: s("2026-09-30T19:03:00Z"), v: 93.5 },
+      { ts: s("2026-10-01T19:30:00Z"), v: 97.9 },
+      { ts: s("2026-10-01T23:30:00Z"), v: 96.1 },
+    ]);
+    expect(calls.filter((c) => c.type === "oxygen-saturation")).toHaveLength(Math.ceil(BACKFILL_DAYS / 14));
+    expect(await state("oxygen-saturation")).toMatchObject({ backfillDaysDone: BACKFILL_DAYS, lastError: null });
+    // Scores never read the samples: the dirty days are exactly the first-backfill test's, from heart rate, steps and the nights.
+    expect(await dirtyDays()).toEqual(["2026-09-30", "2026-10-01", "2026-10-02"]);
+
+    // A deleted point goes on the next re-fetch of its window, as with heart rate; a changed night sets no `changed`.
+    await clearDirty();
+    data["oxygen-saturation"] = data["oxygen-saturation"].filter((p) => !String(at(p, "name")).endsWith("/spo2-7"));
+    expect(await source.pull(USER)).toEqual({ changed: false });
+    expect((await readSamples(db, "spo2", USER, 0, 2 ** 31)).map((r) => r.v)).toEqual([97.2, 96.8, 93.5, 97.9]);
     expect(await dirtyDays()).toEqual([]);
   });
 

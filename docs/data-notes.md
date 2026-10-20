@@ -69,6 +69,7 @@ flowchart LR
 | `daily-respiratory-rate` | `date` | 90 | 10,000 | yes | no | confirm on Fitbit Air |
 | `daily-sleep-temperature-derivations` | `date` | 90 | 10,000 | yes | no | confirm on Fitbit Air (not in Hælan's field map) |
 | `daily-oxygen-saturation` | `date` | 90 | 10,000 | yes | no | confirm on Fitbit Air |
+| `oxygen-saturation` | `sample_time.physical_time` | 14 | 10,000 | yes | no | confirm on Fitbit Air (minute samples, asleep only; shape from Google's vitals guide) |
 | `daily-vo2-max` | `date` | 90 | 10,000 | yes | no | confirm on Fitbit Air (not in Hælan's field map) |
 | `run-vo2-max` | `sample_time.physical_time` | 90 | 10,000 | yes | no | confirm on Fitbit Air (not in Hælan's field map) |
 | `vo2-max` | `sample_time.physical_time` | 90 | 10,000 | yes | no | confirm on Fitbit Air (probe only) |
@@ -116,6 +117,14 @@ dailyRestingHeartRate.date.{year,month,day}                               number
 ```
 dailyRespiratoryRate.breathsPerMinute          number
 dailyRespiratoryRate.date.{year,month,day}     number
+```
+
+**`oxygen-saturation`** (Google's vitals guide: one sample a minute while asleep, unreliable minutes dropped; a 0 is the old Web API's "could not read" sentinel)
+
+```
+oxygenSaturation.percentage                 number (0-100, e.g. 98.2)
+oxygenSaturation.sampleTime.physicalTime    string (RFC 3339)
+oxygenSaturation.sampleTime.utcOffset       string ("19800s")
 ```
 
 **`daily-oxygen-saturation`**

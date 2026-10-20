@@ -76,6 +76,12 @@ export default function Loading() {
             <SkeletonText className={`${CAPTION} w-28`} />
           </div>
         </SectionShell>
+        <SectionShell variant="card" level={2} title="Blood oxygen" href="/health/blood-oxygen">
+          <div aria-hidden className="space-y-1">
+            <SkeletonText className={`${TILE} w-[5ch]`} />
+            <SkeletonText className={`${CAPTION} w-32`} />
+          </div>
+        </SectionShell>
       </div>
       <p className={`${CAPTION} text-center`}>Estimates for personal insight, not medical advice.</p>
     </PageShell>

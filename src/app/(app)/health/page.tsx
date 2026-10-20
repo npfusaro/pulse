@@ -253,6 +253,19 @@ function HeartRate({ hr }: { hr: HealthHubVM["heartRate"] }) {
   )
 }
 
+/** Last night's average, with its low: the band's minute readings, which Fitbit's own app never shows. */
+function BloodOxygen({ o }: { o: HealthHubVM["bloodOxygen"] }) {
+  if (!o) return <p className={EMPTY}>No blood oxygen readings yet. Your band takes them while you sleep; they show here once last night syncs.</p>
+  return (
+    <div className="space-y-1">
+      <ValueUnit value={o.average.toFixed(1)} unit="%" className={cn(TILE, "block")} />
+      <p className={CAPTION}>
+        Last night · low <span className="font-numeric font-bold tabular-nums text-foreground">{o.low}%</span>
+      </p>
+    </div>
+  )
+}
+
 /** Health hub `/health` (spec §7.6): today's values ; each card links to its detail screen. */
 export default async function HealthPage() {
   await connection()
@@ -277,6 +290,9 @@ export default async function HealthPage() {
         </SectionShell>
         <SectionShell variant="card" level={2} title="Heart rate" href="/health/heart-rate">
           <HeartRate hr={vm.heartRate} />
+        </SectionShell>
+        <SectionShell variant="card" level={2} title="Blood oxygen" href="/health/blood-oxygen">
+          <BloodOxygen o={vm.bloodOxygen} />
         </SectionShell>
       </HealthCards>
       <p className={cn(CAPTION, "text-center")}>Estimates for personal insight, not medical advice.</p>

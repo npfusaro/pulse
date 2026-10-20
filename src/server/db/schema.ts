@@ -177,6 +177,22 @@ export const hrDays = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.bucket] })],
 );
 
+/**
+ * The band's minute-by-minute blood oxygen (percent, one decimal), same layout as hr_days. Fitbit reads SpO2 only
+ * while the wearer sleeps and drops minutes it could not read, so a night is a few hundred samples with gaps, and a
+ * UTC day holds at most one night. Shown on /health/blood-oxygen; scores read the nightly average in daily_metrics.
+ */
+export const spo2Days = pgTable(
+  "spo2_days",
+  {
+    userId: userId(),
+    bucket: integer("bucket").notNull(),
+    offsets: integer("offsets").array().notNull(),
+    values: real("values").array().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.bucket] })],
+);
+
 /** Steps per minute (offset = the minute start's second-of-day), same layout as hr_days. Max across sources. */
 export const stepsDays = pgTable(
   "steps_days",
@@ -566,7 +582,7 @@ export const pushSubscriptions = pgTable(
 
 /** Tables holding a user's synced Google data and what was computed from it (cleared on a Google account switch). */
 export const SYNCED_TABLES = [
-  syncState, rawPayloads, hrDays, stepsDays, dailyMetrics, sleepSegments, sleepSessions, exercises, dailyValues,
+  syncState, rawPayloads, hrDays, spo2Days, stepsDays, dailyMetrics, sleepSegments, sleepSessions, exercises, dailyValues,
   healthRecords, intradayDirty, dailyScores, intradaySeries, reports, foldCheckpoints,
 ] as const;
 

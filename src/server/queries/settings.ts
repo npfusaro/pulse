@@ -23,7 +23,8 @@ const GROUPS: { key: string; label: string; types: string[] }[] = [
   { key: "resp", label: "Respiratory rate", types: ["daily-respiratory-rate"] },
   { key: "temp", label: "Skin temperature", types: ["daily-sleep-temperature-derivations"] },
   { key: "zones", label: "Heart rate zones", types: ["daily-heart-rate-zones", "time-in-heart-rate-zone"] },
-  { key: "spo2", label: "Blood oxygen", types: ["daily-oxygen-saturation"] },
+  // The nightly average feeds Health Monitor; the minute samples only draw /health/blood-oxygen, so they are optional below.
+  { key: "spo2", label: "Blood oxygen", types: ["daily-oxygen-saturation", "oxygen-saturation"] },
   { key: "exercise", label: "Exercise", types: ["exercise"] },
   { key: "vo2max", label: "VO2 max", types: ["daily-vo2-max", "run-vo2-max"] },
   { key: "calories", label: "Calories", types: ["total-calories"] },
@@ -41,7 +42,7 @@ const GROUPS: { key: string; label: string; types: string[] }[] = [
  * the next sign-in, a type the account never has) shows in Settings, but never turns the sync dot red or holds the
  * import banner open.
  */
-const OPTIONAL_TYPES = new Set(GROUPS.filter((g) => ["zones", "activity", "nutrition", "vitals", "rhythm"].includes(g.key)).flatMap((g) => g.types).concat("height"));
+const OPTIONAL_TYPES = new Set(GROUPS.filter((g) => ["zones", "activity", "nutrition", "vitals", "rhythm"].includes(g.key)).flatMap((g) => g.types).concat("height", "oxygen-saturation"));
 
 /** Types every Google account syncs: the shell's sync dot and the import banner follow these alone. */
 const CORE_TYPES = new Set(GROUPS.flatMap((g) => g.types).filter((t) => !OPTIONAL_TYPES.has(t)));

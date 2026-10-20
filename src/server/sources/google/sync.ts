@@ -37,6 +37,7 @@ import {
   mapHeartRate,
   mapHeight,
   mapLogEntries,
+  mapOxygenSaturation,
   mapRecords,
   mapRollup,
   mapSleep,
@@ -70,11 +71,13 @@ type Job =
   | { key: string; kind: "rollup"; type: RollupType }
   | { key: string; kind: "extra"; type: ExtraType }
   | { key: string; kind: "records"; type: "electrocardiogram" | "irregular-rhythm-notification" }
-  | { key: string; kind: "sleep" | "exercise" | "hr" | "steps" | "height"; type: DataTypeId };
+  | { key: string; kind: "sleep" | "exercise" | "hr" | "spo2" | "steps" | "height"; type: DataTypeId };
 
 /** Shown-only extras (src/lib/extraMetrics.ts). heart-rate's roll-up gets its own key: "heart-rate" is the sample list. */
 export const EXTRA_JOBS: Job[] = [
   ...EXTRA_TYPES.map((type) => ({ key: type === "heart-rate" ? "heart-rate-daily" : type, kind: "extra" as const, type })),
+  // The band's minute-by-minute SpO2 (/health/blood-oxygen); the nightly average the scores use is daily-oxygen-saturation.
+  { key: "oxygen-saturation", kind: "spo2", type: "oxygen-saturation" },
   { key: "electrocardiogram", kind: "records", type: "electrocardiogram" },
   { key: "irregular-rhythm-notification", kind: "records", type: "irregular-rhythm-notification" },
   { key: "height", kind: "height", type: "height" },
@@ -400,6 +403,13 @@ function writer(tz: string, userId: number) {
       }
       case "hr":
         return writeHr(db, mapHeartRate(points), win);
+      case "spo2": {
+        // Shown only: no score reads the samples, so a changed night neither marks a day dirty nor sets `changed`.
+        // As with heart rate, an empty window never wipes a night (a bad answer must not read as "deleted").
+        const spo2 = mapOxygenSaturation(points);
+        if (spo2.size) await mergeSamples(db, "spo2", userId, win, spo2, "replace");
+        break;
+      }
       case "steps": {
         // Max with the stored minute too: a multi-minute interval that starts before the re-fetch
         // window must not shrink the minutes it spills into.

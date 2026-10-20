@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { DAY_KEYS, days, withDay, type DayKey } from "./days";
 
-const DAY_ROUTES = ["/", "/recovery", "/strain", "/sleep", "/health/healthspan", "/health/monitor", "/health/stress", "/journal"];
+const DAY_ROUTES = ["/", "/recovery", "/strain", "/sleep", "/health/healthspan", "/health/monitor", "/health/stress", "/health/blood-oxygen", "/journal"];
 const OTHER_ROUTES = [
   "/activity",
   "/health",
@@ -153,7 +153,7 @@ test.describe("sweep", () => {
 
   test("headers share one top padding", async ({ page }) => {
     const centres: Record<string, number> = {};
-    for (const route of ["/", "/recovery", "/strain", "/sleep", "/health", "/health/healthspan", "/health/monitor", "/health/stress", "/health/fitness", "/journal", "/journal/insights", "/more", "/settings", "/trends", "/reports", "/activities", "/more/behaviours"]) {
+    for (const route of ["/", "/recovery", "/strain", "/sleep", "/health", "/health/healthspan", "/health/monitor", "/health/stress", "/health/fitness", "/health/blood-oxygen", "/journal", "/journal/insights", "/more", "/settings", "/trends", "/reports", "/activities", "/more/behaviours"]) {
       await page.goto(route);
       await settle(page);
       centres[route] = await page.evaluate(() => {

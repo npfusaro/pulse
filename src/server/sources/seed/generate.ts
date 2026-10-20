@@ -448,6 +448,25 @@ export function generateDay(ctx: Ctx, i: number) {
     bpm[s] = Math.round(clamp(hr + r.g(), 38, ctx.maxHr));
   }
 
+  // Blood oxygen: the band reads SpO2 once a minute while asleep and drops minutes it could not read (about one in
+  // six), so a night is a few hundred points with gaps, around the night's average: a little lower in REM, a touch
+  // higher in deep sleep, with the odd short dip. 0 = no reading. Its own stream, so these draws move nothing else.
+  const spo2 = new Float64Array(n); // not Float32: 96.4 must stay 96.4
+  {
+    const o = rng(i, "spo2");
+    for (const s of [lastNight, tonight]) {
+      for (const g of s?.segments ?? []) {
+        if (g.stage === "awake") continue;
+        span(g.start, g.end, (m) => {
+          if (!worn[m] || o.chance(0.16)) return;
+          const stage = g.stage === "rem" ? -0.4 : g.stage === "deep" ? 0.2 : 0;
+          const dip = o.chance(0.015) ? o.u(2, 4.5) : 0;
+          spo2[m] = round(clamp(s!.metrics.spo2Pct + stage - dip + 0.55 * o.g(), 85, 100), 1);
+        });
+      }
+    }
+  }
+
   const sleeps = [];
   if (lastNight) {
     const id = `seed-sleep-${day}`;
@@ -477,6 +496,8 @@ export function generateDay(ctx: Ctx, i: number) {
     end,
     /** One reading per 15 s from `start`; 0 = band not worn. */
     bpm,
+    /** Per minute from `start`; 0 = no reading (awake, or a minute the band could not read). */
+    spo2,
     /** Per minute from `start`. */
     steps,
     kcal,
@@ -612,6 +633,7 @@ async function inChunks<T>(xs: T[], fn: (part: T[]) => Promise<number>): Promise
 async function writeDays(db: Db, userId: number, gs: Day[], now: number, synced: number | null) {
   const after = synced ?? -Infinity;
   const hr: { ts: number; v: number }[] = [];
+  const spo2: { ts: number; v: number }[] = [];
   const steps: { ts: number; v: number }[] = [];
   const dirty: { userId: number; day: string }[] = [];
   for (const g of gs) {
@@ -623,12 +645,17 @@ async function writeDays(db: Db, userId: number, gs: Day[], now: number, synced:
     for (let m = 0; m < g.steps.length && g.start + (m + 1) * 60 <= now; m++) {
       if (g.steps[m] && g.start + (m + 1) * 60 > after) steps.push({ ts: g.start + m * 60, v: g.steps[m] });
     }
+    // SpO2 feeds no score, so it marks nothing dirty.
+    for (let m = 0; m < g.spo2.length && g.start + m * 60 < now; m++) {
+      if (g.spo2[m] && g.start + m * 60 >= after) spo2.push({ ts: g.start + m * 60, v: g.spo2[m] });
+    }
     if (hr.length + steps.length > before) dirty.push({ userId, day: g.day });
   }
   if (hr.length) await writeSamples(db, "hr", userId, hr);
+  if (spo2.length) await writeSamples(db, "spo2", userId, spo2);
   if (steps.length) await writeSamples(db, "steps", userId, steps);
   if (dirty.length) await db.insert(intradayDirty).values(dirty).onConflictDoNothing();
-  let n = hr.length + steps.length;
+  let n = hr.length + spo2.length + steps.length;
 
   const sleeps = gs.flatMap((g) => g.sleeps.filter((s) => s.availableAt <= now));
   n += await inChunks(sleeps.map((s) => ({ userId, ...s.row })), async (rows) =>

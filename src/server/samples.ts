@@ -1,11 +1,12 @@
-// Band heart rate and per-minute steps, stored as one row per user and UTC day (hr_days, steps_days): parallel
-// arrays of second-of-day offsets and values, sorted by offset. UTC buckets never move when the time zone changes.
+// Band heart rate, blood oxygen and per-minute steps, stored as one row per user and UTC day (hr_days, spo2_days,
+// steps_days): parallel arrays of second-of-day offsets and values, sorted by offset. UTC buckets never move when
+// the time zone changes.
 import { and, between, eq, lt } from "drizzle-orm";
 import { type Db, row, sql } from "./db";
-import { hrDays, stepsDays } from "./db/schema";
+import { hrDays, spo2Days, stepsDays } from "./db/schema";
 
-export type SampleTable = "hr" | "steps";
-const T = { hr: hrDays, steps: stepsDays } as const;
+export type SampleTable = "hr" | "spo2" | "steps";
+const T = { hr: hrDays, spo2: spo2Days, steps: stepsDays } as const;
 const DAY = 86_400;
 export const bucketOf = (ts: number) => Math.floor(ts / DAY);
 
@@ -53,7 +54,7 @@ export async function sampleRange(db: Db, table: SampleTable, userId: number): P
 /**
  * Merges a sync window's samples into storage and returns the timestamps whose value changed (added, updated or
  * removed), for dirty-day marking.
- * - "replace" (heart rate): inside [lo, hi) the stored samples become exactly `incoming`; outside, they stay.
+ * - "replace" (heart rate, blood oxygen): inside [lo, hi) the stored samples become exactly `incoming`; outside, they stay.
  * - "max" (steps): each minute keeps the larger of stored and incoming; nothing is removed.
  */
 export async function mergeSamples(

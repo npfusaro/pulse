@@ -13,6 +13,7 @@ import { dailyMetrics, dailyScores, dailyValues, healthRecords } from "../db/sch
 import { minuteMeanHr } from "@/core/algorithms/stress";
 import { readHr, sampleRange } from "../samples";
 import { addDays, daysBetween, fractionalYears, localMidnight, wall } from "../time";
+import { nightSpo2Of } from "./sleep";
 import { zoneBounds, zoneNote, zoneRows } from "./strain";
 import { illnessRaised, VITAL_LABEL } from "./home";
 import {
@@ -36,7 +37,9 @@ import {
   exercisesBetween,
 } from "./common";
 import type {
+  BloodOxygenVM,
   ChipTone,
+  NightSpo2,
   EcgReading,
   FitnessVM,
   HeartRhythm,
@@ -68,12 +71,13 @@ export async function getHealthHub(ctx: QueryCtx): Promise<HealthHubVM> {
   const today = todayOf(ctx);
   const rows = await loadDays(ctx, addDays(today, -35), today);
   const row = rows.get(today);
-  const [hsVm, monitor, fit, stressSeries, heartRate] = await Promise.all([
+  const [hsVm, monitor, fit, stressSeries, heartRate, bloodOxygen] = await Promise.all([
     getHealthspan(today, ctx),
     getMonitor(today, ctx, rows),
     getFitness(ctx),
     loadSeries(ctx, today, "stress"),
     latestHr(ctx),
+    lastNightSpo2(ctx, rows.get(today)),
   ]);
   const hs = hsVm.result;
   // Healthspan updates weekly: compare the shown week's pace with the stored week before it.
@@ -105,7 +109,15 @@ export async function getHealthHub(ctx: QueryCtx): Promise<HealthHubVM> {
       ? ok({ vo2max: fit.vo2.value.value, category: fit.vo2.value.category, percentile: fit.vo2.value.percentile, acwr: tl?.acwr ?? null, acwrTone: tl?.tone ?? null })
       : none("no_data"),
     heartRate,
+    bloodOxygen,
   };
+}
+
+/** Last night's blood oxygen for the hub card: today's main sleep's readings, when the band kept any. */
+async function lastNightSpo2(ctx: QueryCtx, row: DayRow | undefined): Promise<HealthHubVM["bloodOxygen"]> {
+  const main = row?.sleep?.main;
+  const stats = main ? await spo2Stats(ctx, main) : null;
+  return stats ? { average: nightAverage(row, stats)!, low: stats.low.v, wake: ms(main!.end) } : null;
 }
 
 /** The newest stored band reading, whenever it was. */
@@ -306,6 +318,19 @@ const num = (v: number, dp: number, signed = false) => {
   return signed ? `${v >= 0 ? "+" : "−"}${s}` : v < 0 ? `−${s}` : s;
 };
 
+/** The vital's standing against its personal range, as Health Monitor words it; null without a range or a value. */
+function vitalChip(v: (typeof VITALS)[number], value: number | null | undefined, range: Vital["range"], status: Vital["status"]): Vital["chip"] {
+  if (!range || !finite(value)) return null;
+  // Ranges always show one decimal, so a whole-number reading never looks equal to its bound.
+  const lo = num(range.low, 1, v.signed);
+  const hi = num(range.high, 1, v.signed);
+  if (v.key === "spo2" && status === "low" && value < 95) return { tone: "warning", text: "Below 95%" };
+  if (status === "in_range") return { tone: "optimal", text: v.key === "spo2" ? `Within ${lo} - 100` : `Within ${lo} - ${hi}` };
+  if (status === "high") return { tone: "warning", text: `Elevated, above ${hi}` };
+  if (status === "low") return { tone: "warning", text: `Low, below ${lo}` };
+  return null;
+}
+
 /** Health Monitor `/health/monitor` for `day` (spec §7.8). */
 export async function getMonitor(day: string, ctx: QueryCtx, preloaded?: Map<string, DayRow>): Promise<MonitorVM> {
   const today = todayOf(ctx);
@@ -322,16 +347,7 @@ export async function getMonitor(day: string, ctx: QueryCtx, preloaded?: Map<str
     const value = row ? v.pick(row) : null;
     const range = reading?.range ?? null;
     const status = reading?.status ?? "no_data";
-    let chip: Vital["chip"] = null;
-    if (range && finite(value)) {
-      // Ranges always show one decimal, so a whole-number reading never looks equal to its bound.
-      const lo = num(range.low, 1, v.signed);
-      const hi = num(range.high, 1, v.signed);
-      if (v.key === "spo2" && status === "low" && value < 95) chip = { tone: "warning", text: "Below 95%" };
-      else if (status === "in_range") chip = { tone: "optimal", text: v.key === "spo2" ? `Within ${lo} - 100` : `Within ${lo} - ${hi}` };
-      else if (status === "high") chip = { tone: "warning", text: `Elevated, above ${hi}` };
-      else if (status === "low") chip = { tone: "warning", text: `Low, below ${lo}` };
-    }
+    const chip = vitalChip(v, value, range, status);
     const reason = v.key === "skinTempDev" && row?.metrics?.nightlyTempC != null ? "calibrating" : vitalReason(row, isToday, v.key === "hrv");
     const tags = hm && hm.reason === null && hm.stale.includes(v.key === "restingHr" ? "rhr" : v.key === "skinTempDev" ? "skinTemp" : v.key) ? (["stale_baseline"] as const) : [];
     return {
@@ -570,6 +586,66 @@ export async function hrMinutes(ctx: QueryCtx, from: number, to: number): Promis
   return {
     points: minuteMeanHr(hr, from, to).map((v, m) => ({ t: ms(from + m * 60), v: v === null ? null : Math.round(v) })),
     latest: last ? { t: ms(last.ts), bpm: last.bpm } : null,
+  };
+}
+
+/** Readings strictly under this count as low, the way Fitbit and Health Monitor flag them ("Below 95%"). */
+const SPO2_LOW_PCT = 95;
+
+type NightStats = { readMin: number; mean: number; low: { t: number; v: number }; below95Min: number };
+
+/** A main sleep's blood-oxygen readings summarised; null when the band kept none for it. */
+async function spo2Stats(ctx: QueryCtx, main: { start: number; end: number }): Promise<(NightStats & { night: NightSpo2 }) | null> {
+  const night = await nightSpo2Of(ctx, main.start, main.end);
+  const inNight = night.samples.filter((x) => x.ts >= main.start && x.ts < main.end);
+  if (!inNight.length) return null;
+  const low = inNight.reduce((m, x) => (x.v < m.v ? x : m));
+  return {
+    night: { bed: night.bed, wake: night.wake, points: night.points },
+    readMin: inNight.length,
+    mean: Math.round((inNight.reduce((a, x) => a + x.v, 0) / inNight.length) * 10) / 10,
+    low: { t: ms(low.ts), v: low.v },
+    below95Min: inNight.filter((x) => x.v < SPO2_LOW_PCT).length,
+  };
+}
+
+/** The night's average as Health Monitor shows it: Google's nightly value when it has one, else the readings' own mean. */
+const nightAverage = (row: DayRow | undefined, stats: NightStats | null) => (finite(row?.metrics?.spo2Pct) ? row!.metrics!.spo2Pct! : (stats?.mean ?? null));
+
+/**
+ * Blood oxygen `/health/blood-oxygen?d=`: the band's minute-by-minute SpO2 across the night ending on `day` (its main
+ * sleep), the night's average and standing from Health Monitor, and the week of nights ending there. Fitbit reads
+ * SpO2 only while asleep, so there is nothing live about today: today's night is last night's.
+ */
+export async function getBloodOxygen(day: string, ctx: QueryCtx): Promise<BloodOxygenVM> {
+  const isToday = day === todayOf(ctx);
+  const rows = await loadDays(ctx, addDays(day, -6), day);
+  const row = rows.get(day);
+  const v = VITALS.find((x) => x.key === "spo2")!;
+  const hm = row?.healthMonitor;
+  const reading = hm && hm.reason === null ? hm.vitals.find((x) => x.key === "spo2") : undefined;
+  const range = reading?.range ?? null;
+  const noNight = vitalReason(row, isToday);
+
+  const week = await Promise.all(
+    Array.from({ length: 7 }, (_, k) => addDays(day, k - 6)).map(async (d) => {
+      const r = rows.get(d);
+      const main = r?.sleep?.main;
+      const stats = main ? await spo2Stats(ctx, main) : null;
+      return { day: d, main, stats, average: nightAverage(r, stats) };
+    }),
+  );
+  const tonight = week.at(-1)!;
+  const st = tonight.stats;
+
+  return {
+    day,
+    isToday,
+    average: finite(tonight.average) ? ok(tonight.average) : none(noNight),
+    night: st ? ok({ ...st.night, low: st.low, readMin: st.readMin, below95Min: st.below95Min }) : none(tonight.main ? "no_data" : noNight),
+    range,
+    chip: vitalChip(v, tonight.average, range, reading?.status ?? "no_data"),
+    nights: week.map((n) => ({ day: n.day, average: n.average, low: n.stats?.low.v ?? null, below95Min: n.stats?.below95Min ?? null })),
   };
 }
 

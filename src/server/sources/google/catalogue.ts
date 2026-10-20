@@ -38,6 +38,9 @@ export const DATA_TYPES = {
   "daily-respiratory-rate": daily,
   "daily-sleep-temperature-derivations": daily,
   "daily-oxygen-saturation": daily,
+  // The band's minute-by-minute SpO2 (asleep only; a minute the band could not read is left out). Google's data-types
+  // page documents it as a 1-minute sample type; 14-day windows keep a page under the cap (about 500 points a night).
+  "oxygen-saturation": { ...sample, maxDays: 14 },
   "daily-vo2-max": daily,
   "run-vo2-max": sample,
   "vo2-max": sample, // listed so the probe can say which VO2max types the band populates

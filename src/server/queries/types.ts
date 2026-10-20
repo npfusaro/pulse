@@ -322,6 +322,8 @@ export type HealthHubVM = {
   fitness: Metric<{ vo2max: number; category: string; percentile: number; acwr: number | null; acwrTone: ChipTone | null }>;
   /** The newest band reading (epoch ms), today or not. */
   heartRate: { t: number; bpm: number } | null;
+  /** Last night's blood oxygen: the average and the lowest minute, from the band's readings; null without a night read. */
+  bloodOxygen: { average: number; low: number; wake: number } | null;
 };
 
 /** Minute-mean heart rate (`t` epoch ms, a null minute is a gap) and the newest sample; the live route's answer too. */
@@ -338,6 +340,24 @@ export type HeartRateVM = HeartRateLive & {
   maxHr: number;
   zones: Metric<ZoneRow[]>;
   zoneNote: string;
+};
+
+/** The band's minute-by-minute blood oxygen across one main sleep (`t` epoch ms; a null minute is a gap). */
+export type NightSpo2 = { bed: number; wake: number; points: TimePoint[] };
+
+/** Blood oxygen `/health/blood-oxygen?d=`: the night ending on `day`. */
+export type BloodOxygenVM = {
+  day: string;
+  isToday: boolean;
+  /** The night's average, as Health Monitor shows it (Google's nightly value, else the mean of the samples). */
+  average: Metric<number>;
+  /** The lowest minute, the minutes read, and how many of them sat under 95%. */
+  night: Metric<NightSpo2 & { low: { t: number; v: number }; readMin: number; below95Min: number }>;
+  /** Health Monitor's personal range and standing for the night, when it has one. */
+  range: { low: number; high: number } | null;
+  chip: { tone: ChipTone; text: string } | null;
+  /** The seven nights ending on `day`, oldest first; nulls where the band read nothing. */
+  nights: { day: string; average: number | null; low: number | null; below95Min: number | null }[];
 };
 
 export type HealthspanContributor = {
